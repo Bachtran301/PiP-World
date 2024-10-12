@@ -95,7 +95,7 @@ class Pip {
     }
     
     async upgradeCards(headers, user, initData) {
-        const loginUrl = "https://api.tg.pip.world/app/post/login";
+        const loginUrl = "https://api.tg.pip.world/app/post/login25";
         
         const loginPayload = {
             initData: initData,
@@ -186,7 +186,7 @@ class Pip {
     }    
 
     async loginAndUpdateUser(initData) {
-        const loginUrl = "https://api.tg.pip.world/app/post/login";
+        const loginUrl = "https://api.tg.pip.world/app/post/login25";
         const passiveIncomeUrl = "https://api.tg.pip.world/app/get/yieldpassiveincome";
         const updateTradingGroupUrl = "https://api.tg.pip.world/app/patch/updateUserTradingGroup";
         const boardingCompletedUrl = "https://api.tg.pip.world/app/post/boardingCompleted";
@@ -256,7 +256,7 @@ class Pip {
     }
 
     async performTaps(headers, user) {
-        const tapHandlerUrl = "https://api.tg.pip.world/app/post/tapHandler";
+        const tapHandlerUrl = "https://api.tg.pip.world/app/post/tapHandler27";
         let isFirstTap = true;
 
         while (true) {
