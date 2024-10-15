@@ -78,7 +78,7 @@ class Pip {
     }
 
     async buyInvestItem(headers, itemId, itemPrice, userBalance) {
-        const buyUrl = "https://api.tg.pip.world/app/post/buyInvestItem";
+        const buyUrl = "https://api.tg.pip.world/app/post/buyInvestItem38539";
         try {
             const buyResponse = await axios.post(buyUrl, { itemId }, { headers });
             
@@ -148,7 +148,7 @@ class Pip {
     }
 
     async checkAndCompleteQuests(headers, questIds) {
-        const checkQuestUrl = "https://api.tg.pip.world/app/post/checkQuest";
+        const checkQuestUrl = "https://api.tg.pip.world/app/post/checkQuest49944";
         
         for (const questId of questIds) {
             try {
@@ -186,7 +186,7 @@ class Pip {
     }    
 
     async loginAndUpdateUser(initData) {
-        const loginUrl = "https://api.tg.pip.world/app/post/login25";
+        const loginUrl = "https://api.tg.pip.world/app/post/login29458";
         const passiveIncomeUrl = "https://api.tg.pip.world/app/get/yieldpassiveincome";
         const updateTradingGroupUrl = "https://api.tg.pip.world/app/patch/updateUserTradingGroup";
         const boardingCompletedUrl = "https://api.tg.pip.world/app/post/boardingCompleted";
@@ -256,7 +256,7 @@ class Pip {
     }
 
     async performTaps(headers, user) {
-        const tapHandlerUrl = "https://api.tg.pip.world/app/post/tapHandler27";
+        const tapHandlerUrl = "https://api.tg.pip.world/app/post/tapHandler22224";
         let isFirstTap = true;
 
         while (true) {
