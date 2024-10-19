@@ -95,7 +95,7 @@ class Pip {
     }
     
     async upgradeCards(headers, user, initData) {
-        const loginUrl = "https://api.tg.pip.world/app/post/login25";
+        const loginUrl = "https://api.tg.pip.world/app/post/login29458";
         
         const loginPayload = {
             initData: initData,
