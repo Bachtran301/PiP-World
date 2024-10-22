@@ -37,26 +37,26 @@ class Pip {
         const timestamp = new Date().toLocaleTimeString();
         switch(type) {
             case 'success':
-                console.log(`[${timestamp}] [*] ${msg}`.green);
+                console.log(`[${timestamp}] ✅ ${msg}`.green);
                 break;
             case 'custom':
-                console.log(`[${timestamp}] [*] ${msg}`.magenta);
+                console.log(`[${timestamp}] 🔮 ${msg}`.magenta);
                 break;        
             case 'error':
-                console.log(`[${timestamp}] [!] ${msg}`.red);
+                console.log(`[${timestamp}] ❌ ${msg}`.red);
                 break;
             case 'warning':
-                console.log(`[${timestamp}] [*] ${msg}`.yellow);
+                console.log(`[${timestamp}] ⚠️ ${msg}`.yellow);
                 break;
             default:
-                console.log(`[${timestamp}] [*] ${msg}`.blue);
+                console.log(`[${timestamp}] * ${msg}`.blue);
         }
     }
 
     async countdown(seconds) {
         for (let i = seconds; i >= 0; i--) {
             readline.cursorTo(process.stdout, 0);
-            process.stdout.write(`===== Wait ${i} seconds before the next loop =====`);
+            process.stdout.write(`⏳ Wait ${i} seconds before the next loop`);
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
         console.log('');
@@ -211,9 +211,9 @@ class Pip {
 
     async loginAndUpdateUser(initData) {
         const loginUrl = "https://api.tg.pip.world/app/post/login29458";
-        const passiveIncomeUrl = "https://api.tg.pip.world/app/get/yieldpassiveincome";
-        const updateTradingGroupUrl = "https://api.tg.pip.world/app/patch/updateUserTradingGroup";
         const boardingCompletedUrl = "https://api.tg.pip.world/app/post/boardingCompleted";
+        //const passiveIncomeUrl = "https://api.tg.pip.world/app/get/yieldpassiveincome";
+        const updateTradingGroupUrl = "https://api.tg.pip.world/app/patch/updateUserTradingGroup";
         const headers = this.getHeaders(initData);
     
         try {
@@ -248,14 +248,16 @@ class Pip {
                 const questIds = await this.getQuestIds(loginResponse);
                 await this.checkAndCompleteQuests(headers, questIds);
     
-                const passiveIncomeResponse = await this.axiosInstance.get(passiveIncomeUrl, { headers });
+                //const passiveIncomeResponse = await this.axiosInstance.get(passiveIncomeUrl, { headers });
     
-                if (passiveIncomeResponse.status === 200) {
-                    user = passiveIncomeResponse.data.user;
+                //if (passiveIncomeResponse.status === 200) {
+                //    user = passiveIncomeResponse.data.user;
     
-                    user = await this.performTaps(headers, user);
-                    user = await this.upgradeCards(headers, user, initData);
-                }
+                user = await this.performTaps(headers, user);
+                user = await this.upgradeCards(headers, user, initData);
+
+                return user;
+                //}
             }
         } catch (error) {
             this.log(`Error in loginAndUpdateUser: ${error.message}`, 'error');
@@ -313,7 +315,7 @@ class Pip {
                     this.log(`Tap boosts: ${user.freeTapsMultiplier.available}`, 'custom');
                     isFirstTap = false;
                     
-                    if (user.energy === 0 && user.freeEnergyRefills.available > 0) {
+                    if (user.energy < 0 && user.freeEnergyRefills.available > 0) {
                         const refillResult = await this.refillEnergy(headers);
                         if (!refillResult) {
                             this.log('Unable to refill energy', 'warning');
@@ -367,16 +369,18 @@ class Pip {
                     continue;
                 }
 
-                console.log(`========== Account ${i + 1} | ${firstName.green} | ip: ${proxyIP} ==========`);
+                console.log(`👤 Account ${(i + 1).toString().cyan} | 🧑 ${firstName.green} | 🌐 ${proxyIP.yellow} | 🚀 Starting...`);
                 
                 this.axiosInstance = this.getAxiosInstance(proxy);
 
                 try {
-                    await this.loginAndUpdateUser(initData);
+                    const result = await this.loginAndUpdateUser(initData);
+                    console.log(`✅ Account ${(i + 1).toString().cyan} | 🧑 ${firstName.green} | 🌐 ${proxyIP.yellow} | 🏁 Finished`);
                 } catch (error) {
                     this.log(`Error processing account ${i + 1}: ${error.message}`, 'error');
                 }
 
+                console.log('─'.repeat(50).gray);  // Separator line
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
@@ -384,7 +388,6 @@ class Pip {
         }
     }
 }
-//
 const client = new Pip();
 client.main().catch(err => {
     client.log(err.message, 'error');
