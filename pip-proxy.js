@@ -119,44 +119,80 @@ class Pip {
     }
     
     async upgradeCards(headers, user, initData) {
-        const loginUrl = "https://api.tg.pip.world/app/post/login29458";
-        
-        const loginPayload = {
-            initData: initData,
-            referredBy: JSON.parse(decodeURIComponent(initData.split('user=')[1].split('&')[0])).id
-        };
-
-        const loginResponse = await this.axiosInstance.post(loginUrl, loginPayload, { headers });
-        const availableInvestItems = loginResponse.data.investItems?.investItems || [];
-        const userInvestItems = user.investItems || [];
-        const boughtItemIds = new Set(userInvestItems.map(item => item.id));
-        
-        const currentTimestamp = Math.floor(Date.now() / 1000);
-        
-        for (const item of availableInvestItems) {
-            if (boughtItemIds.has(item.id)) {
-                this.log(`Card ${item.id} already bought, skipping`, 'info');
-                continue;
+        try {
+            const availableItemsResponse = await this.axiosInstance.get("https://api.tg.pip.world/app/get/getUserInvestItems", { headers });
+            const availableItems = availableItemsResponse.data.investItems || [];
+    
+            const ownedItemsResponse = await this.axiosInstance.get("https://api.tg.pip.world/app/get/getUserOwnedInvestItems", { headers });
+            const ownedItems = ownedItemsResponse.data.userOwnedInvestItems || [];
+    
+            const ownedItemMap = new Map();
+            for (const item of ownedItems) {
+                const baseId = item.id.replace(/_\d+$/, '');
+                ownedItemMap.set(baseId, item);
             }
-
-            if (item.validUntil && currentTimestamp > item.validUntil) {
-                this.log(`Card ${item.id} expired (${new Date(item.validUntil * 1000).toLocaleString()}), skipping`, 'warning');
-                continue;
-            }
-
-            this.log(`Card ${item.id} | Price: ${item.price} | Profit: ${item.profitPerHour}`, 'info');
-            
-            if (user.balance > item.price && item.price <= this.config.maxInvestPrice) {
-                const buyResult = await this.buyInvestItem(headers, item.id, item.price, user.balance);
-                if (buyResult === false) {
-                    this.log(`Could not upgrade card: ${item.id}`, 'warning');
+    
+            const currentTimestamp = Math.floor(Date.now() / 1000);
+    
+            for (const item of availableItems) {
+                if (item.validUntil && currentTimestamp > item.validUntil) {
+                    this.log(`Card ${item.id} has expired (${new Date(item.validUntil * 1000).toLocaleString()}), skipping`, 'warning');
                     continue;
                 }
-                user = buyResult;
+    
+                const baseId = item.id.replace(/_\d+$/, '');
+                const ownedItem = ownedItemMap.get(baseId);
+    
+                if (item.upgradeValuePerHour && ownedItem) {
+                    this.log(`Checking upgrade for card ${item.title}`, 'info');
+                    this.log(`Price: ${item.price} | Profit/hour: ${item.profitPerHour} | Increase: ${item.upgradeValuePerHour}`, 'info');
+    
+                    if (user.balance >= item.price && item.price <= this.config.maxInvestPrice) {
+                        const buyResult = await this.buyInvestItem(headers, item.id, item.price, user.balance);
+                        if (buyResult === false) {
+                            this.log(`Unable to upgrade card: ${item.id}`, 'warning');
+                            continue;
+                        }
+                        user = buyResult;
+                        
+                        ownedItemMap.set(baseId, {
+                            ...ownedItem,
+                            level: ownedItem.level + 1,
+                            profitPerHour: item.profitPerHour
+                        });
+                    } else {
+                        this.log(`Not enough balance to upgrade card ${item.title} (${item.price} > ${user.balance})`, 'warning');
+                    }
+                }
+                else if (!ownedItem && !item.upgradeValuePerHour) {
+                    this.log(`Checking new card purchase: ${item.title}`, 'info');
+                    this.log(`Price: ${item.price} | Profit/hour: ${item.profitPerHour}`, 'info');
+    
+                    if (user.balance >= item.price && item.price <= this.config.maxInvestPrice) {
+                        const buyResult = await this.buyInvestItem(headers, item.id, item.price, user.balance);
+                        if (buyResult === false) {
+                            this.log(`Unable to buy card: ${item.id}`, 'warning');
+                            continue;
+                        }
+                        user = buyResult;
+                        
+                        ownedItemMap.set(baseId, {
+                            id: item.id,
+                            title: item.title,
+                            profitPerHour: item.profitPerHour,
+                            level: 1
+                        });
+                    } else {
+                        this.log(`Not enough balance to buy card ${item.title} (${item.price} > ${user.balance})`, 'warning');
+                    }
+                }
             }
+    
+            return user;
+        } catch (error) {
+            this.log(`Error while upgrading cards: ${error.message}`, 'error');
+            return user;
         }
-
-        return user;
     }
 
     async getQuestIds(loginResponse) {
@@ -231,7 +267,10 @@ class Pip {
     
                 if (!user.boardingCompleted) {
                     const groupId = Math.floor(Math.random() * 4) + 1;
-                    const updateGroupResponse = await this.axiosInstance.patch(updateTradingGroupUrl, { groupId: groupId.toString() }, { headers });
+                    const updateGroupResponse = await this.axiosInstance.patch(updateTradingGroupUrl, 
+                        { groupId: groupId.toString() },
+                        { headers }
+                    );
                     
                     if (updateGroupResponse.status === 200) {
                         const groupName = updateGroupResponse.data.user.tradingGroupData.name;
@@ -315,7 +354,7 @@ class Pip {
                     this.log(`Tap boosts: ${user.freeTapsMultiplier.available}`, 'custom');
                     isFirstTap = false;
                     
-                    if (user.energy < 0 && user.freeEnergyRefills.available > 0) {
+                    if (user.energy < 20 && user.freeEnergyRefills.available > 0) {
                         const refillResult = await this.refillEnergy(headers);
                         if (!refillResult) {
                             this.log('Unable to refill energy', 'warning');

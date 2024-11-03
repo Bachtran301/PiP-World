@@ -39,7 +39,7 @@ class Pip {
                 break;
             case 'custom':
                 console.log(`[${timestamp}] * ${msg}`.magenta);
-                break;        
+                break;
             case 'error':
                 console.log(`[${timestamp}] ❌ ${msg}`.red);
                 break;
@@ -81,7 +81,7 @@ class Pip {
         const buyUrl = "https://api.tg.pip.world/app/post/buyInvestItem38539";
         try {
             const buyResponse = await axios.post(buyUrl, { itemId }, { headers });
-            
+
             if (buyResponse.status === 200) {
                 const user = buyResponse.data.user;
                 this.log(`Successfully upgraded card: ${itemId} | New balance: ${user.balance}`, 'success');
@@ -93,55 +93,95 @@ class Pip {
         }
         return false;
     }
-    
+
     async upgradeCards(headers, user, initData) {
-        const loginUrl = "https://api.tg.pip.world/app/post/login29458";
-        
-        const loginPayload = {
-            initData: initData,
-            referredBy: JSON.parse(decodeURIComponent(initData.split('user=')[1].split('&')[0])).id
-        };
-
-        const loginResponse = await axios.post(loginUrl, loginPayload, { headers });
-        const availableInvestItems = loginResponse.data.investItems?.investItems || [];
-        const userInvestItems = user.investItems || [];
-        const boughtItemIds = new Set(userInvestItems.map(item => item.id));
-        
-        const currentTimestamp = Math.floor(Date.now() / 1000);
-        
-        for (const item of availableInvestItems) {
-            if (boughtItemIds.has(item.id)) {
-                this.log(`Card ${item.id} already bought, skipping`, 'info');
-                continue;
-            }
-
-            if (item.validUntil && currentTimestamp > item.validUntil) {
-                this.log(`Card ${item.id} expired (${new Date(item.validUntil * 1000).toLocaleString()}), skipping`, 'warning');
-                continue;
-            }
-
-            this.log(`Card ${item.id} | Price: ${item.price} | Profit: ${item.profitPerHour}`, 'info');
+        try {
             
-            if (user.balance > item.price && item.price <= this.config.maxInvestPrice) {
-                const buyResult = await this.buyInvestItem(headers, item.id, item.price, user.balance);
-                if (buyResult === false) {
-                    this.log(`Could not upgrade card: ${item.id}`, 'warning');
+            const availableItemsResponse = await axios.get("https://api.tg.pip.world/app/get/getUserInvestItems", { headers });
+
+            const availableItems = availableItemsResponse.data.investItems || [];
+
+            const ownedItemsResponse = await axios.get("https://api.tg.pip.world/app/get/getUserOwnedInvestItems", { headers });
+
+            const ownedItems = ownedItemsResponse.data.userOwnedInvestItems || [];
+
+            const ownedItemMap = new Map();
+
+            for (const item of ownedItems) {
+                const baseId = item.id.replace(/_\d+$/, '');
+                ownedItemMap.set(baseId, item);
+
+            }
+            const currentTimestamp = Math.floor(Date.now() / 1000);
+
+            for (const item of availableItems) {
+
+                if (item.validUntil && currentTimestamp > item.validUntil) {
+                    this.log(`Card ${item.id} expired (${new Date(item.validUntil * 1000).toLocaleString()}), skipping`, 'warning');
                     continue;
                 }
-                user = buyResult;
-            }
-        }
+                const baseId = item.id.replace(/_\d+$/, '');
+                const ownedItem = ownedItemMap.get(baseId);
 
-        return user;
+                if (item.upgradeValuePerHour && ownedItem) {
+                    this.log(`Checking upgrade for card ${item.title}`, 'info');
+                    this.log(`Price: ${item.price} | Profit/hour: ${item.profitPerHour} | Increase: ${item.upgradeValuePerHour}`, 'info');
+
+                    if (user.balance >= item.price && item.price <= this.config.maxInvestPrice) {
+                        const buyResult = await this.buyInvestItem(headers, item.id, item.price, user.balance);
+                        if (buyResult === false) {
+                            this.log(`Unable to upgrade card: ${item.id}`, 'warning');
+                            continue;
+                        }
+
+                        user = buyResult;
+                        ownedItemMap.set(baseId, {
+                            ...ownedItem,
+                            level: ownedItem.level + 1,
+                            profitPerHour: item.profitPerHour
+                        });
+                    } else {
+                        this.log(`Not enough balance to upgrade card ${item.title} (${item.price} > ${user.balance})`, 'warning');
+                    }
+                }
+                else if (!ownedItem && !item.upgradeValuePerHour) {
+                    this.log(`Checking new card purchase: ${item.title}`, 'info');
+                    this.log(`Price: ${item.price} | Profit/hour: ${item.profitPerHour}`, 'info');
+
+                    if (user.balance >= item.price && item.price <= this.config.maxInvestPrice) {
+                        const buyResult = await this.buyInvestItem(headers, item.id, item.price, user.balance);
+                        if (buyResult === false) {
+                            this.log(`Unable to buy card: ${item.id}`, 'warning');
+                            continue;
+                        }
+                        user = buyResult;
+
+                        ownedItemMap.set(baseId, {
+                            id: item.id,
+                            title: item.title,
+                            profitPerHour: item.profitPerHour,
+                            level: 1
+                        });
+                    } else {
+                        this.log(`Not enough balance to buy card ${item.title} (${item.price} > ${user.balance})`, 'warning');
+                    }
+                }
+            }
+
+            return user;
+        } catch (error) {
+            this.log(`Error while upgrading cards: ${error.message}`, 'error');
+            return user;
+        }
     }
 
     async getQuestIds(loginResponse) {
         const quests = loginResponse.data.quests?.quests || [];
         const currentTimestamp = Math.floor(Date.now() / 1000);
-        
+
         return quests
-            .filter(quest => 
-                !quest.completed && 
+            .filter(quest =>
+                !quest.completed &&
                 (quest.validUntil === null || currentTimestamp <= quest.validUntil)
             )
             .map(quest => quest.id);
@@ -149,11 +189,11 @@ class Pip {
 
     async checkAndCompleteQuests(headers, questIds) {
         const checkQuestUrl = "https://api.tg.pip.world/app/post/checkQuest49944";
-        
+
         for (const questId of questIds) {
             try {
                 const checkResponse = await axios.post(checkQuestUrl, { questId }, { headers });
-                
+
                 if (checkResponse.status === 200) {
                     const quests = checkResponse.data.quests?.quests;
                     if (quests) {
@@ -180,61 +220,54 @@ class Pip {
                     this.log(`Error checking quest ${questId}: ${error.message}`, 'error');
                 }
             }
-            
+
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
-    }    
+    }
 
     async loginAndUpdateUser(initData) {
         const loginUrl = "https://api.tg.pip.world/app/post/login29458";
-        //const passiveIncomeUrl = "https://api.tg.pip.world/app/get/yieldpassiveincome";
         const updateTradingGroupUrl = "https://api.tg.pip.world/app/patch/updateUserTradingGroup";
         const boardingCompletedUrl = "https://api.tg.pip.world/app/post/boardingCompleted";
         const headers = this.getHeaders(initData);
-    
+
         try {
             const loginPayload = {
                 initData: initData,
                 referredBy: "6269851518"
             };
-    
+
             const loginResponse = await axios.post(loginUrl, loginPayload, { headers });
-            
+
             if (loginResponse.status === 200) {
                 this.log('Login successful!', 'success');
                 let user = loginResponse.data.user;
                 this.log(`Balance: ${user.balance}`, 'info');
-    
+
                 if (!user.boardingCompleted) {
                     const groupId = Math.floor(Math.random() * 4) + 1;
-                    
+
                     const updateGroupResponse = await axios.patch(updateTradingGroupUrl, { groupId: groupId.toString() }, { headers });
-                    
+
                     if (updateGroupResponse.status === 200) {
                         const groupName = updateGroupResponse.data.user.tradingGroupData.name;
                         this.log(`You joined group ${groupName}`, 'success');
-                        
+
                         const boardingCompletedResponse = await axios.post(boardingCompletedUrl, {}, { headers });
-                        
+
                         if (boardingCompletedResponse.status === 200) {
                             this.log('Boarding process completed', 'success');
                             user = boardingCompletedResponse.data.user;
                         }
                     }
-    
+
                 }
-    
+
                 const questIds = await this.getQuestIds(loginResponse);
                 await this.checkAndCompleteQuests(headers, questIds);
-    
-                //const passiveIncomeResponse = await axios.get(passiveIncomeUrl, { headers });
-    
-                //if (passiveIncomeResponse.status === 200) {
-                //    user = passiveIncomeResponse.data.user;
-    
-                    user = await this.performTaps(headers, user);
+
+                user = await this.performTaps(headers, user);
                 user = await this.upgradeCards(headers, user, initData);
-                //}
             }
         } catch (error) {
             this.log(`Error in loginAndUpdateUser: ${error.message}`, 'error');
@@ -282,7 +315,7 @@ class Pip {
             const tapPayload = { coins: tapAmount };
             try {
                 const tapResponse = await axios.post(tapHandlerUrl, tapPayload, { headers });
-                
+
                 if (tapResponse.status === 200) {
                     user = tapResponse.data.user;
                     this.log(`Tap successful: ${tapAmount} coins`, 'success');
@@ -291,8 +324,8 @@ class Pip {
                     this.log(`Full Energy: ${user.freeEnergyRefills.available}`, 'custom');
                     this.log(`Tap boosts: ${user.freeTapsMultiplier.available}`, 'custom');
                     isFirstTap = false;
-                    
-                    if (user.energy < 0 && user.freeEnergyRefills.available > 0) {
+
+                    if (user.energy < 20 && user.freeEnergyRefills.available > 0) {
                         const refillResult = await this.refillEnergy(headers);
                         if (!refillResult) {
                             this.log('Unable to refill energy', 'warning');
@@ -303,7 +336,7 @@ class Pip {
                         this.log('No energy and no free refills left', 'warning');
                         break;
                     }
-                    
+
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } else {
                     this.log('Tap failed', 'error');
@@ -337,8 +370,8 @@ class Pip {
                 const firstName = userData.first_name;
 
                 console.log(`👤 Account ${(i + 1).toString().yellow} | 🧑 ${firstName.green} | 🚀 Starting...`);
-                
-                const result = await this.loginAndUpdateUser(initData);
+
+                await this.loginAndUpdateUser(initData);
                 console.log(`✅ Account ${(i + 1).toString().yellow} | 🧑 ${firstName.green} | 🏁 Finished`);
                 console.log('─'.repeat(50).gray);  // Separator line
                 await new Promise(resolve => setTimeout(resolve, 1000));
